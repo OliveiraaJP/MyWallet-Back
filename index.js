@@ -5,8 +5,9 @@ import dotenv from "dotenv";
 import bcrypt from "bcrypt";
 import { v4 } from "uuid";
 import Joi from "joi";
-import database from "./database.js";
-import { getUser } from "./middleware/userMiddleware.js";
+import { MongoClient } from "mongodb";
+//import database from "./database.js";
+//import { getUser } from "./middleware/userMiddleware.js";
 import dayjs from "dayjs";
 
 /* import authRouter from "./routes/authRouter.js"
@@ -19,14 +20,14 @@ dotenv.config();
 app.use(json());
 app.use(cors());
 
-/* let database = null;
+let database = null;
 const mongoClient = new MongoClient(process.env.MONGO_URI); // criando config da conexão
 const promise = mongoClient.connect();
 promise.then(() => {
   database = mongoClient.db(process.env.DATABASE);
   console.log(chalk.bold.blue("Connected Database"));
 });
-promise.catch((e) => console.log(chalk.bold.red("Connection Lost"), e)); */
+promise.catch((e) => console.log(chalk.bold.red("Connection Lost"), e));
 
 app.post("/signup", async (req, res) => {
   const { password, name, email } = req.body;
@@ -40,7 +41,7 @@ app.post("/signup", async (req, res) => {
 
   const validation = signUpSchema.validate(req.body, { abortEarly: false });
   if (validation.error) {
-    return res.status(422).send(validation.error.mao((e) => e.message));
+    return res.status(422).send(validation.error.map((e) => e.message));
   }
 
   const hashedPassword = bcrypt.hashSync(password, 10);
@@ -99,16 +100,33 @@ app.post("/signin", async (req, res) => {
 });
 
 app.get("/transactions"),
-  getUser,
   async (req, res) => {
+    const { authorization } = req.headers;
+    const token = authorization?.replace("Bearer", "").trim();
+    if (!token) return res.status(401).send("sem token");
+
     try {
-      res.sendStatus(200);
+      const session = await database.collection("sessions").findOne({ token });
+      if (!session) return res.status(401).send("sem sessão");
+
+      const user = await database
+        .collection("users")
+        .findOne({ _id: session.userId });
+      if (!user) return res.status(401).send("sem user");
+
+      const transactions = await database.collection("trnsactions").find({userId: user._id}).toArray();
+      res.send(transactions);
+
     } catch (error) {
       console.log("transactions get error", error);
     }
   };
 
-app.post("/transactions", getUser, async (req, res) => {
+app.post("/transactions", async (req, res) => {
+  const { authorization } = req.headers;
+  const token = authorization?.replace("Bearer", "").trim();
+  if (!token) return res.status(401).send("sem token");
+
   const { type, value, description } = req.body;
 
   const transactionSchema = Joi.object({
@@ -121,12 +139,18 @@ app.post("/transactions", getUser, async (req, res) => {
     abortEarly: false,
   });
   if (validation.error) {
-    return res.status(422).send(validation.error.map((e) => e.message));
+    return res.status(422).send("erro");
   }
 
-  const { user } = res.locals;
-
   try {
+    const session = await database.collection("sessions").findOne({ token });
+    if (!session) return res.status(401).send("sem sessão");
+
+    const user = await database
+      .collection("users")
+      .findOne({ _id: session.userId });
+    if (!user) return res.status(401).send("sem user");
+
     await database.collection("transactions").insertOne({
       type,
       value,

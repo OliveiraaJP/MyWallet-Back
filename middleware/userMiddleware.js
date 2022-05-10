@@ -1,4 +1,4 @@
-import database from "../database";
+/* import database from "../database.js";
 
 export async function getUser (req, res, next){
     const {authorization} = req.headers
@@ -20,4 +20,4 @@ export async function getUser (req, res, next){
         console.log("user middleware error", error);
         return res.sendStatus(500)
     }
-}
+} */
