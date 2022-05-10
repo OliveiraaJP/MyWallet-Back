@@ -1,7 +1,7 @@
 import express, { json } from "express";
 import cors from "cors";
-import chalk from "chalk"
-import dotenv from "dotenv"
+import chalk from "chalk";
+import dotenv from "dotenv";
 import { MongoClient } from "mongodb";
 import bcrypt from "bcrypt";
 import { v4 } from "uuid";
@@ -12,10 +12,8 @@ import transactionRouter from "./routes/transactionsRouter.js" */
 /* app.use(authRouter);
 app.use(transactionRouter); */
 
-
-
 const app = express();
-dotenv.config()
+dotenv.config();
 app.use(json());
 app.use(cors());
 
@@ -28,11 +26,10 @@ promise.then(() => {
 });
 promise.catch((e) => console.log(chalk.bold.red("Connection Lost"), e));
 
-
 app.post("/signup", async (req, res) => {
   {
     const { password, name, email } = req.body;
-  
+
     const signUpSchema = Joi.object({
       name: Joi.string().required(),
       email: Joi.string().email().required(),
@@ -40,13 +37,13 @@ app.post("/signup", async (req, res) => {
       confirmPassword: Joi.ref("password"),
     });
 
-    const validation = signUpSchema.validate(req.body, {abortEarly: false});
-    if(validation.error){
-      return res.status(422).send(validation.error.mao((e) => e.message))
+    const validation = signUpSchema.validate(req.body, { abortEarly: false });
+    if (validation.error) {
+      return res.status(422).send(validation.error.mao((e) => e.message));
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
-  
+
     try {
       const user = await database.collection("users").findOne({ email });
       if (user) {
@@ -66,20 +63,43 @@ app.post("/signup", async (req, res) => {
       res.sendStatus(500);
     }
   }
-})
+});
 
 app.post("/signin", async (req, res) => {
-  try { 
-    
-    
+  const { password, email } = req.body;
+
+  const signInSchema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().required(),
+  });
+
+  const validation = signInSchema.validate(req.body, { abortEarly: false });
+  if (validation.error) {
+    return res.status(422).send(validation.error.mao((e) => e.message));
+  }
+
+  try {
+    const user = await database.collection("users").findOne({ email });
+    if (!user) {
+      return res.status(401).send("Usuario nao encontrado");
+    }
+
+    if (user && bcrypt.compare(password, user.password)) {
+      const token = v4();
+      await database.collection("sessions").insertOne({
+        userId: user._id,
+        token,
+      });
+      return res.send({token, name: user.name})
+    }
   } catch (error) {
     console.log("errro post signin", error);
-    res.sendStatus(500)
+    res.sendStatus(500);
   }
-})
+});
 
 app.listen(5000, () => {
   console.log(
     chalk.magentaBright.bold(`Server is running on: http://localhost:${5000}`)
-  ); 
+  );
 });
